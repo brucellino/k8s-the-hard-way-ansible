@@ -1,0 +1,81 @@
+- name: Create machines
+  hosts: localhost
+  connection: local
+  vars:
+    _size_id: s-1vcpu-1gb
+    _region_id: ams3
+    _image_id: ubuntu-22-04-x64
+    _vpc_name: kubernetes-the-hard-way
+    _cidr: 10.240.0.0/24
+    deploy: false
+  tasks:
+    - name: Find kubectl is available local path
+      ansible.builtin.shell: which kubectl
+      register: kubectl_exists
+    - name: Assert result of kubectl_exists is true
+      ansible.builtin.assert:
+        that: kubectl_exists.rc == 0
+    - name: Create SSH keypair
+      community.crypto.openssh_keypair:
+        size: 2048
+        path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
+      register: ssh_key
+    - name: Add ssh key to digitalocean
+      community.digitalocean.digital_ocean_sshkey:
+        oauth_token: "{{ lookup('env', 'DO_TOKEN') }}"
+        name: "ansible key"
+        ssh_pub_key: "{{ ssh_key.public_key }}"
+        state: present
+      register: do_ssh_key
+
+    - name: Create Digitalocean VPC
+      community.digitalocean.digital_ocean_vpc:
+        state: present
+        description: "VPC for K8s the hard way"
+        name: "{{ _vpc_name }}"
+        region: "{{ _region_id }}"
+        ip_range: "{{ _cidr }}"
+      register: do_vpc
+
+    - name: Create Virtual Machines on Digital ocean
+      community.digitalocean.digital_ocean_droplet:
+        state: present
+        name: "kube-{{ item }}"
+        size: "{{ _size_id }}"
+        region_id: "{{ _region_id }}"
+        image: "{{ _image_id }}"
+        ssh_keys: do_ssh_key.id
+        unique_name: true
+      register: droplet_info
+      loop: "{{ range(0, 3) | list }}"
+      when: deploy | bool
+
+- name: Destroy
+  hosts: localhost
+  connection: local
+  vars:
+    _size_id: s-1vcpu-1gb
+    _region_id: ams3
+    _image_id: ubuntu-22-04-x64
+    _vpc_name: kubernetes-the-hard-way
+    deploy: false
+    destroy: false
+  tasks:
+    - name: Get medieval
+      when: destroy | bool
+      block:
+        - name: Destroy VPC
+          community.digitalocean.digital_ocean_vpc:
+            state: absent
+            name: "{{ _vpc_name }}"
+            region: "{{ _region_id }}"
+        - name: Destroy ssh key
+          community.digitalocean.digital_ocean_sshkey:
+            oauth_token: "{{ lookup('env', 'DO_TOKEN') }}"
+            name: "ansible key"
+            ssh_pub_key: "{{ ssh_key.public_key }}"
+            state: absent
+        - name: Remove local SSH keys
+          community.crypto.openssh_keypair:
+            state: absent
+            path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
