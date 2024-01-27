@@ -28,6 +28,10 @@
         state: present
       register: do_ssh_key
 
+    - name: debug
+      debug:
+        var: do_ssh_key
+
     - name: Create Digitalocean VPC
       community.digitalocean.digital_ocean_vpc:
         state: present
@@ -37,18 +41,61 @@
         ip_range: "{{ _cidr }}"
       register: do_vpc
 
-    - name: Create Virtual Machines on Digital ocean
+    # Add loadbalancer
+
+    - name: Create Controller Machines
       community.digitalocean.digital_ocean_droplet:
         state: present
         name: "kube-{{ item }}"
         size: "{{ _size_id }}"
         region_id: "{{ _region_id }}"
         image: "{{ _image_id }}"
-        ssh_keys: do_ssh_key.id
+        ssh_keys: "{{ do_ssh_key.data.ssh_key.id }}"
         unique_name: true
-      register: droplet_info
+        private_networking: true
+        monitoring: true
+        vpc_uuid: "{{ do_vpc.data.vpc.id }}"
+        tags:
+          - k8s
+          - controller
+          - auto_destroy
+      register: controller_droplets
       loop: "{{ range(0, 3) | list }}"
       when: deploy | bool
+
+    - name: Create Droplet firewall
+      community.digitalocean.digital_ocean_firewall:
+        # droplet_ids: controller_droplets.
+        state: present
+        name: '{{ _vpc_name }}-firewall'
+        inbound_rules:
+          - protocol: tcp
+            ports: 22
+            sources:
+              addresses: ["0.0.0.0/0"]
+          - protocol: tcp
+            ports: 6443
+            sources:
+              addresses: ["0.0.0.0/0"]
+          - protocol: icmp
+            ports: "1-65535"
+            sources:
+              addresses: ["0.0.0.0/0"]
+        outbound_rules:
+          - protocol: "tcp"
+            ports: "1-65535"
+            destinations:
+              addresses: ["0.0.0.0/0", "::/0"]
+          - protocol: "udp"
+            ports: "1-65535"
+            destinations:
+              addresses: ["0.0.0.0/0", "::/0"]
+          - protocol: "icmp"
+            ports: "1-65535"
+            destinations:
+              addresses: ["0.0.0.0/0", "::/0"]
+        tags: k8s
+      register: do_firewall
 
 - name: Destroy
   hosts: localhost
@@ -64,11 +111,19 @@
     - name: Get medieval
       when: destroy | bool
       block:
-        - name: Destroy VPC
-          community.digitalocean.digital_ocean_vpc:
+        # - name: Look up all Droplets tagged with auto-destroy
+
+        - name: Remove Controller Machines
+          community.digitalocean.digital_ocean_droplet:
             state: absent
-            name: "{{ _vpc_name }}"
-            region: "{{ _region_id }}"
+            region_id: "{{ _region_id }}"
+            vpc_uuid: "{{ do_vpc.data.vpc.id }}"
+            name: "kube-{{ item }}"
+            unique_name: true
+            tags:
+              - auto-destroy
+          loop: "{{ range(0, 3) | list }}"
+
         - name: Destroy ssh key
           community.digitalocean.digital_ocean_sshkey:
             oauth_token: "{{ lookup('env', 'DO_TOKEN') }}"
@@ -79,3 +134,19 @@
           community.crypto.openssh_keypair:
             state: absent
             path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
+
+        - name: Wait for VPC to contain zero members
+          community.digitalocean.digital_ocean_vpc_info:
+            members: true
+            name: "{{ _vpc_name }}"
+          register: vpc_cleanup
+          until: vpc_cleanup.data.members | length == 0
+          retries: 10
+          delay: 5
+
+
+        - name: Destroy VPC
+          community.digitalocean.digital_ocean_vpc:
+            state: absent
+            name: "{{ _vpc_name }}"
+            region: "{{ _region_id }}"
