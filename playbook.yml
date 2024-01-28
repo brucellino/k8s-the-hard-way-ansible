@@ -9,9 +9,13 @@
     _cidr: 10.240.0.0/24
     deploy: false
   tasks:
-    - name: Find kubectl is available local path
+    - name: Find kubectl is available local path  # noqa command-instead-of-shell
       ansible.builtin.shell: which kubectl
+      check_mode: false
+      changed_when: false
+      failed_when: kubectl_exists.rc > 0
       register: kubectl_exists
+
     - name: Assert result of kubectl_exists is true
       ansible.builtin.assert:
         that: kubectl_exists.rc == 0
@@ -27,10 +31,6 @@
         ssh_pub_key: "{{ ssh_key.public_key }}"
         state: present
       register: do_ssh_key
-
-    - name: debug
-      debug:
-        var: do_ssh_key
 
     - name: Create Digitalocean VPC
       community.digitalocean.digital_ocean_vpc:
