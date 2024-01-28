@@ -8,6 +8,8 @@
     _vpc_name: kubernetes-the-hard-way
     _cidr: 10.240.0.0/24
     deploy: false
+  tags:
+    - deploy
   tasks:
     - name: Find kubectl is available local path  # noqa command-instead-of-shell
       ansible.builtin.shell: which kubectl
@@ -97,6 +99,40 @@
         tags: k8s
       register: do_firewall
 
+- name: PKI TLS
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Ensure local ca dir is present
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'PWD') }}/ca"
+        state: directory
+        mode: "0700"
+      tags:
+        - crypto
+    - name: Create private key for CA
+      community.crypto.openssl_privatekey:
+        size: 2048
+        type: RSA
+        path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+      tags:
+        - crypto
+    - name: Create certificate signing request (CSR) for CA
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+        organization_name: Kubernetes
+        organizational_unit_name: CA
+        country_name: Italy
+        state_or_province_name: Sicily
+        locality_name: Catania
+      register: ca_csr
+    - name: Create self-signed certificate from CSR
+      community.crypto.x509_certificate:
+        path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+        csr_content: "{{ ca_csr.csr }}"
+        privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+        provider: selfsigned
+
 - name: Destroy
   hosts: localhost
   connection: local
@@ -107,6 +143,8 @@
     _vpc_name: kubernetes-the-hard-way
     deploy: false
     destroy: false
+  tags:
+    - destroy
   tasks:
     - name: Get medieval
       when: destroy | bool
@@ -143,10 +181,13 @@
           until: vpc_cleanup.data.members | length == 0
           retries: 10
           delay: 5
-
-
         - name: Destroy VPC
           community.digitalocean.digital_ocean_vpc:
             state: absent
             name: "{{ _vpc_name }}"
             region: "{{ _region_id }}"
+        - name: Remove CA certs
+          ansible.builtin.file:
+            path: "{{ lookup('env', 'PWD') }}/ca"
+            state: absent
+            recurse: true
