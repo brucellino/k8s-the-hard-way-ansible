@@ -122,16 +122,29 @@
         privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
         organization_name: Kubernetes
         organizational_unit_name: CA
-        country_name: Italy
+        country_name: IT
         state_or_province_name: Sicily
         locality_name: Catania
+        # see https://www.openssl.org/docs/manmaster/man5/x509v3_config.html
+        key_usage:
+          - digitalSignature
+          - keyEncipherment
+          - keyCertSign
+          - dataEncipherment
+        extended_key_usage:
+          - serverAuth
+          - clientAuth
       register: ca_csr
+      tags:
+        - crypto
     - name: Create self-signed certificate from CSR
       community.crypto.x509_certificate:
         path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
         csr_content: "{{ ca_csr.csr }}"
         privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
         provider: selfsigned
+      tags:
+        - crypto
 
 - name: Destroy
   hosts: localhost
