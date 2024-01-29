@@ -8,7 +8,6 @@
       ansible.builtin.include_vars:
         file: defaults/main.yml
     - name: Get medieval
-      when: destroy | bool
       block:
         - name: Get VPC info
           community.digitalocean.digital_ocean_vpc_info:
@@ -18,13 +17,25 @@
           community.digitalocean.digital_ocean_droplet:
             state: absent
             region_id: "{{ _region_id }}"
-            vpc_uuid: "{{ vpc_cleanup.data.vpc.id }}"
+            vpc_uuid: "{{ vpc_info | community.general.json_query('data[?name==` _vpc_name`]') }}"
             name: "kube-{{ item }}"
             unique_name: true
             tags:
               - auto-destroy
           loop: "{{ range(0, 3) | list }}"
-          when: vpc_info | community.general.json_query('data[?name==`_vpc_name`]') | length > 0
+          when: vpc_info | community.general.json_query("data[?name==`{{ _vpc_name }}`]") | length > 0
+
+        - name: Remove Worker Machines
+          community.digitalocean.digital_ocean_droplet:
+            state: absent
+            region_id: "{{ _region_id }}"
+            vpc_uuid: "{{ vpc_info | community.general.json_query('data[?name==` _vpc_name`]') }}"
+            name: "kube-worker-{{ item }}"
+            unique_name: true
+            tags:
+              - auto-destroy
+          loop: "{{ range(0, 3) | list }}"
+          when: vpc_info | community.general.json_query("data[?name==`{{ _vpc_name }}`]") | length > 0
 
         - name: Lookup SSH key
           community.digitalocean.digital_ocean_sshkey_info:
@@ -60,14 +71,14 @@
           retries: 10
           delay: 5
           failed_when: false
-          when: '"Could not find a VPC named" not in trash.msg'
+          # when: '"Could not find a VPC named" not in trash.msg'
 
         - name: Destroy VPC
           community.digitalocean.digital_ocean_vpc:
             state: absent
             name: "{{ _vpc_name }}"
             region: "{{ _region_id }}"
-          when: '"Could not find a VPC named" not in trash.msg'
+          # when: '"Could not find a VPC named" not in trash.msg'
 
         - name: Remove certs
           ansible.builtin.file:
