@@ -37,10 +37,13 @@
     path: "{{ lookup('env', 'PWD') }}/certs"
     state: directory
     mode: "0700"
+
+## Admin certs
 - name: Admin client private key
   community.crypto.openssl_privatekey:
     path: "{{ lookup('env', 'PWD') }}/certs/admin-key.pem"
     type: RSA
+
 - name: Create admin client CSR
   community.crypto.openssl_csr_pipe:
     privatekey_path: "{{ lookup('env', 'PWD') }}/certs/admin-key.pem"

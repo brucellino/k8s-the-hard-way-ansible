@@ -4,6 +4,9 @@
   tags:
     - deploy
   tasks:
+    - name: Get vars
+      ansible.builtin.include_vars: defaults/main.yml
+
     - name: Find kubectl is available local path  # noqa command-instead-of-shell
       ansible.builtin.shell: which kubectl
       check_mode: false
@@ -14,14 +17,15 @@
     - name: Assert result of kubectl_exists is true
       ansible.builtin.assert:
         that: kubectl_exists.rc == 0
+
     - name: Create SSH keypair
       community.crypto.openssh_keypair:
         size: 2048
         path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
       register: ssh_key
+
     - name: Add ssh key to digitalocean
       community.digitalocean.digital_ocean_sshkey:
-        oauth_token: "{{ lookup('env', 'DO_TOKEN') }}"
         name: "ansible key"
         ssh_pub_key: "{{ ssh_key.public_key }}"
         state: present
@@ -57,6 +61,7 @@
       register: controller_droplets
       loop: "{{ range(0, 3) | list }}"
       when: deploy | bool
+      # until: '"vpc" in (controller_droplets.data.keys() | list)'
 
     - name: Create Droplet firewall
       community.digitalocean.digital_ocean_firewall:
@@ -99,3 +104,12 @@
   tasks:
     - name: PKI
       ansible.builtin.include_tasks: tasks/pki.yml
+
+- name: Workers
+  tags:
+    - workers
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Workers
+      ansible.builtin.include_tasks: tasks/workers.yml
