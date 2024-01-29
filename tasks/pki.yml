@@ -1,0 +1,81 @@
+- name: Ensure local ca dir is present
+  ansible.builtin.file:
+    path: "{{ lookup('env', 'PWD') }}/ca"
+    state: directory
+    mode: "0700"
+- name: Create private key for CA
+  community.crypto.openssl_privatekey:
+    size: 2048
+    type: RSA
+    path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+- name: Create certificate signing request (CSR) for CA
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    organization_name: Kubernetes
+    organizational_unit_name: CA
+    country_name: IT
+    state_or_province_name: Sicily
+    locality_name: Catania
+    # see https://www.openssl.org/docs/manmaster/man5/x509v3_config.html
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+      - keyCertSign
+      - dataEncipherment
+    extended_key_usage:
+      - serverAuth
+      - clientAuth
+  register: ca_csr
+- name: Create self-signed certificate from CSR
+  community.crypto.x509_certificate:
+    path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    csr_content: "{{ ca_csr.csr }}"
+    privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    provider: selfsigned
+- name: Ensure certs directory
+  ansible.builtin.file:
+    path: "{{ lookup('env', 'PWD') }}/certs"
+    state: directory
+    mode: "0700"
+- name: Admin client private key
+  community.crypto.openssl_privatekey:
+    path: "{{ lookup('env', 'PWD') }}/certs/admin-key.pem"
+    type: RSA
+- name: Create admin client CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ lookup('env', 'PWD') }}/certs/admin-key.pem"
+    common_name: admin
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: system:masters
+  register: admin_csr
+- name: Check whether admin certificate exists
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'PWD') }}/certs/admin-cert.pem"
+  register: admin_cert_exists
+
+- name: Read admin cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ lookup('env', 'PWD') }}/certs/admin-cert.pem"
+  when: admin_cert_exists.stat.exists
+  register: admin_cert
+
+- name: Sign admin cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (admin_cert.content | b64decode) if admin_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ admin_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_admin_cert
+
+- name: Write Admin cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ lookup('env', 'PWD') }}/certs/admin-cert.pem"
+    content: "{{ signed_admin_cert.certificate }}"
+    mode: "0644"
+  when: signed_admin_cert is changed

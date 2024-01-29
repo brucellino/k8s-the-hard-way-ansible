@@ -1,13 +1,6 @@
 - name: Create machines
   hosts: localhost
   connection: local
-  vars:
-    _size_id: s-1vcpu-1gb
-    _region_id: ams3
-    _image_id: ubuntu-22-04-x64
-    _vpc_name: kubernetes-the-hard-way
-    _cidr: 10.240.0.0/24
-    deploy: false
   tags:
     - deploy
   tasks:
@@ -100,107 +93,9 @@
       register: do_firewall
 
 - name: PKI TLS
+  tags: crypto
   hosts: localhost
   connection: local
   tasks:
-    - name: Ensure local ca dir is present
-      ansible.builtin.file:
-        path: "{{ lookup('env', 'PWD') }}/ca"
-        state: directory
-        mode: "0700"
-      tags:
-        - crypto
-    - name: Create private key for CA
-      community.crypto.openssl_privatekey:
-        size: 2048
-        type: RSA
-        path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
-      tags:
-        - crypto
-    - name: Create certificate signing request (CSR) for CA
-      community.crypto.openssl_csr_pipe:
-        privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
-        organization_name: Kubernetes
-        organizational_unit_name: CA
-        country_name: IT
-        state_or_province_name: Sicily
-        locality_name: Catania
-        # see https://www.openssl.org/docs/manmaster/man5/x509v3_config.html
-        key_usage:
-          - digitalSignature
-          - keyEncipherment
-          - keyCertSign
-          - dataEncipherment
-        extended_key_usage:
-          - serverAuth
-          - clientAuth
-      register: ca_csr
-      tags:
-        - crypto
-    - name: Create self-signed certificate from CSR
-      community.crypto.x509_certificate:
-        path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
-        csr_content: "{{ ca_csr.csr }}"
-        privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
-        provider: selfsigned
-      tags:
-        - crypto
-
-- name: Destroy
-  hosts: localhost
-  connection: local
-  vars:
-    _size_id: s-1vcpu-1gb
-    _region_id: ams3
-    _image_id: ubuntu-22-04-x64
-    _vpc_name: kubernetes-the-hard-way
-    deploy: false
-    destroy: false
-  tags:
-    - destroy
-  tasks:
-    - name: Get medieval
-      when: destroy | bool
-      block:
-        # - name: Look up all Droplets tagged with auto-destroy
-
-        - name: Remove Controller Machines
-          community.digitalocean.digital_ocean_droplet:
-            state: absent
-            region_id: "{{ _region_id }}"
-            vpc_uuid: "{{ do_vpc.data.vpc.id }}"
-            name: "kube-{{ item }}"
-            unique_name: true
-            tags:
-              - auto-destroy
-          loop: "{{ range(0, 3) | list }}"
-
-        - name: Destroy ssh key
-          community.digitalocean.digital_ocean_sshkey:
-            oauth_token: "{{ lookup('env', 'DO_TOKEN') }}"
-            name: "ansible key"
-            ssh_pub_key: "{{ ssh_key.public_key }}"
-            state: absent
-        - name: Remove local SSH keys
-          community.crypto.openssh_keypair:
-            state: absent
-            path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
-
-        - name: Wait for VPC to contain zero members
-          community.digitalocean.digital_ocean_vpc_info:
-            members: true
-            name: "{{ _vpc_name }}"
-          register: vpc_cleanup
-          until: vpc_cleanup.data.members | length == 0
-          retries: 10
-          delay: 5
-        - name: Destroy VPC
-          community.digitalocean.digital_ocean_vpc:
-            state: absent
-            name: "{{ _vpc_name }}"
-            region: "{{ _region_id }}"
-        - name: Remove CA certs
-          ansible.builtin.file:
-            path: "{{ lookup('env', 'PWD') }}/ca"
-            state: absent
-            recurse: true
+    - name: PKI
+      ansible.builtin.include_tasks: tasks/pki.yml
