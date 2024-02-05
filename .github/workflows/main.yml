@@ -12,3 +12,7 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: Run ansible-lint
+        uses: ansible/ansible-lint@v6.22.2
