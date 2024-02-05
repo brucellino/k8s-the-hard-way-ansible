@@ -20,10 +20,12 @@
 
     - name: DigitalOcean
       ansible.builtin.include_tasks: tasks/digitalocean.yml
-      when: deploy | bool
 
     - name: PKI
       ansible.builtin.include_tasks: tasks/pki.yml
+
+    - name: Controllers
+      ansible.builtin.include_tasks: tasks/controllers.yml
 
     - name: Workers
       ansible.builtin.include_tasks: tasks/workers.yml

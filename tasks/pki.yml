@@ -28,6 +28,7 @@
       - serverAuth
       - clientAuth
   register: ca_csr
+  changed_when: false
 
 - name: Create self-signed certificate from CSR
   community.crypto.x509_certificate:
