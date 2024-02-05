@@ -1,3 +1,4 @@
 collections:
   - community.digitalocean
   - community.crypto
+  - community.general
