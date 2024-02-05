@@ -1,0 +1,89 @@
+- name: Destroy
+  hosts: localhost
+  connection: local
+  tags:
+    - destroy
+  tasks:
+    - name: Get vars
+      ansible.builtin.include_vars:
+        file: defaults/main.yml
+    - name: Get medieval
+      block:
+        - name: Get VPC info
+          community.digitalocean.digital_ocean_vpc_info:
+          register: vpc_info
+
+        - name: Remove Controller Machines # noqa no-jinja-when jinja
+          community.digitalocean.digital_ocean_droplet:
+            state: absent
+            region_id: "{{ _region_id }}"
+            vpc_uuid: "{{ vpc_info | community.general.json_query('data[?name==` _vpc_name`]') }}"
+            name: "kube-{{ item }}"
+            unique_name: true
+            tags:
+              - auto-destroy
+          loop: "{{ range(0, 3) | list }}"
+          when: vpc_info | community.general.json_query("data[?name==`{{ _vpc_name }}`]") | length > 0
+
+        - name: Remove Worker Machines # noqa no-jinja-when jinja
+          community.digitalocean.digital_ocean_droplet:
+            state: absent
+            region_id: "{{ _region_id }}"
+            vpc_uuid: "{{ vpc_info | community.general.json_query('data[?name==` _vpc_name`]') }}"
+            name: "kube-worker-{{ item }}"
+            unique_name: true
+            tags:
+              - auto-destroy
+          loop: "{{ range(0, 3) | list }}"
+          when: vpc_info | community.general.json_query("data[?name==`{{ _vpc_name }}`]") | length > 0
+
+        - name: Lookup SSH key
+          community.digitalocean.digital_ocean_sshkey_info:
+          register: existing_keys
+
+        - name: Destroy ssh key
+          community.digitalocean.digital_ocean_sshkey:
+            oauth_token: "{{ lookup('env', 'DO_TOKEN') }}"
+            name: "{{ _key_name }}"
+            ssh_pub_key: "{{ ssh_key.public_key }}"
+            state: absent
+          when: existing_keys | community.general.json_query('data[?name==`_key_name`]') | length > 0
+
+        - name: Remove local SSH keys
+          community.crypto.openssh_keypair:
+            state: absent
+            path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
+
+        - name: Info
+          community.digitalocean.digital_ocean_vpc_info:
+            members: true
+            name: "{{ _vpc_name }}"
+          register: trash
+          failed_when: false
+          changed_when: false
+
+        - name: Wait for VPC to contain zero members
+          community.digitalocean.digital_ocean_vpc_info:
+            members: true
+            name: "{{ _vpc_name }}"
+          register: vpc_cleanup
+          until: vpc_cleanup.data.members | length == 0
+          retries: 10
+          delay: 5
+          failed_when: false
+          # when: '"Could not find a VPC named" not in trash.msg'
+
+        - name: Destroy VPC
+          community.digitalocean.digital_ocean_vpc:
+            state: absent
+            name: "{{ _vpc_name }}"
+            region: "{{ _region_id }}"
+          # when: '"Could not find a VPC named" not in trash.msg'
+
+        - name: Remove certs
+          ansible.builtin.file:
+            path: "{{ lookup('env', 'PWD') }}/{{ item }}"
+            state: absent
+          loop:
+            - ca
+            - certs

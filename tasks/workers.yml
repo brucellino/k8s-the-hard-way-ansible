@@ -1,0 +1,73 @@
+---
+- name: Create Worker Machines
+  community.digitalocean.digital_ocean_droplet:
+    state: present
+    name: "kube-worker-{{ item }}"
+    size: "{{ _size_id }}"
+    region_id: "{{ _region_id }}"
+    image: "{{ _image_id }}"
+    ssh_keys: "{{ do_ssh_key.data.ssh_key.id }}"
+    unique_name: true
+    private_networking: true
+    monitoring: true
+    vpc_uuid: "{{ do_vpc.data.vpc.id }}"
+    tags:
+      - k8s
+      - worker
+      - auto_destroy
+  register: worker_droplets
+  loop: "{{ range(0, 3) | list }}"
+  when: deploy | bool
+
+# Kubelet certs
+- name: Kubelet client private key
+  community.crypto.openssl_privatekey:
+    path: "{{ lookup('env', 'PWD') }}/certs/kubelet-{{ item }}-key.pem"
+    type: RSA
+  loop: "{{ range(0, 3) | list }}"
+
+# This requires knowing the IP and hostname of the machine
+- name: Create kubelet client CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ lookup('env', 'PWD') }}/certs/kubelet-{{ item }}-key.pem"
+    common_name: "system:node:node-{{ item }}"
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: system:masters
+  register: kubelet_csr
+  loop: "{{ range(0, 3) | list }}"
+
+- name: Check whether kubelet certificate exists
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'PWD') }}/certs/kubelet-{{ item }}-cert.pem"
+  register: kube_cert_exists
+  loop: "{{ range(0, 3) | list }}"
+
+- name: Read kubelet cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ lookup('env', 'PWD') }}/certs/kubelet-{{ item.item }}-cert.pem"
+  when: kube_cert_exists | community.general.json_query('results[?stat.exists]')
+  register: kube_cert
+  loop: "{{ kube_cert_exists.results | list }}"
+
+- name: Sign kubelet cert with CA # noqa jinja[invalid]
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (kube_cert.content | b64decode) if (kube_cert_exists | community.general.json_query('results[?stat.exists]')) else omit }}"
+    csr_content: "{{ kubelet_csr.results[item].csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_kubelet_cert
+  loop: "{{ range(0, 3) | list }}"
+
+- name: Write kubelet cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ lookup('env', 'PWD') }}/certs/kubelet-cert-{{ item.item }}.pem"
+    content: "{{ item.certificate }}"
+    mode: "0644"
+  when: signed_kubelet_cert is changed
+  loop: "{{ signed_kubelet_cert.results | list }}"

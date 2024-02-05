@@ -164,3 +164,7 @@ cython_debug/
 
 # Ignore ssh keys
 id_rsa*
+
+# ignore generated files
+ca/
+certs/
