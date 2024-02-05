@@ -52,7 +52,7 @@
   register: kube_cert
   loop: "{{ kube_cert_exists.results | list }}"
 
-- name: Sign kubelet cert with CA
+- name: Sign kubelet cert with CA # noqa jinja[invalid]
   community.crypto.x509_certificate_pipe:
     content: "{{ (kube_cert.content | b64decode) if (kube_cert_exists | community.general.json_query('results[?stat.exists]')) else omit }}"
     csr_content: "{{ kubelet_csr.results[item].csr }}"

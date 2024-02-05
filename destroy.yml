@@ -13,7 +13,7 @@
           community.digitalocean.digital_ocean_vpc_info:
           register: vpc_info
 
-        - name: Remove Controller Machines
+        - name: Remove Controller Machines # noqa no-jinja-when jinja
           community.digitalocean.digital_ocean_droplet:
             state: absent
             region_id: "{{ _region_id }}"
@@ -25,7 +25,7 @@
           loop: "{{ range(0, 3) | list }}"
           when: vpc_info | community.general.json_query("data[?name==`{{ _vpc_name }}`]") | length > 0
 
-        - name: Remove Worker Machines
+        - name: Remove Worker Machines # noqa no-jinja-when jinja
           community.digitalocean.digital_ocean_droplet:
             state: absent
             region_id: "{{ _region_id }}"
