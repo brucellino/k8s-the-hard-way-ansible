@@ -1,0 +1,59 @@
+---
+# Digital Ocean tasks
+- name: Create SSH keypair
+  community.crypto.openssh_keypair:
+    size: 2048
+    path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
+  register: ssh_key
+
+- name: Add ssh key to digitalocean
+  community.digitalocean.digital_ocean_sshkey:
+    name: "ansible key"
+    ssh_pub_key: "{{ ssh_key.public_key }}"
+    state: present
+  register: do_ssh_key
+
+- name: Create Digitalocean VPC
+  community.digitalocean.digital_ocean_vpc:
+    state: present
+    description: "VPC for K8s the hard way"
+    name: "{{ _vpc_name }}"
+    region: "{{ _region_id }}"
+    ip_range: "{{ _cidr }}"
+  register: do_vpc
+
+# Add loadbalancer
+
+- name: Create Droplet firewall
+  community.digitalocean.digital_ocean_firewall:
+    # droplet_ids: controller_droplets.
+    state: present
+    name: '{{ _vpc_name }}-firewall'
+    inbound_rules:
+      - protocol: tcp
+        ports: 22
+        sources:
+          addresses: ["0.0.0.0/0"]
+      - protocol: tcp
+        ports: 6443
+        sources:
+          addresses: ["0.0.0.0/0"]
+      - protocol: icmp
+        ports: "1-65535"
+        sources:
+          addresses: ["0.0.0.0/0"]
+    outbound_rules:
+      - protocol: "tcp"
+        ports: "1-65535"
+        destinations:
+          addresses: ["0.0.0.0/0", "::/0"]
+      - protocol: "udp"
+        ports: "1-65535"
+        destinations:
+          addresses: ["0.0.0.0/0", "::/0"]
+      - protocol: "icmp"
+        ports: "1-65535"
+        destinations:
+          addresses: ["0.0.0.0/0", "::/0"]
+    tags: k8s
+  register: do_firewall

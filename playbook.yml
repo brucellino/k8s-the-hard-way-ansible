@@ -18,98 +18,12 @@
       ansible.builtin.assert:
         that: kubectl_exists.rc == 0
 
-    - name: Create SSH keypair
-      community.crypto.openssh_keypair:
-        size: 2048
-        path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
-      register: ssh_key
-
-    - name: Add ssh key to digitalocean
-      community.digitalocean.digital_ocean_sshkey:
-        name: "ansible key"
-        ssh_pub_key: "{{ ssh_key.public_key }}"
-        state: present
-      register: do_ssh_key
-
-    - name: Create Digitalocean VPC
-      community.digitalocean.digital_ocean_vpc:
-        state: present
-        description: "VPC for K8s the hard way"
-        name: "{{ _vpc_name }}"
-        region: "{{ _region_id }}"
-        ip_range: "{{ _cidr }}"
-      register: do_vpc
-
-    # Add loadbalancer
-
-    - name: Create Controller Machines
-      community.digitalocean.digital_ocean_droplet:
-        state: present
-        name: "kube-{{ item }}"
-        size: "{{ _size_id }}"
-        region_id: "{{ _region_id }}"
-        image: "{{ _image_id }}"
-        ssh_keys: "{{ do_ssh_key.data.ssh_key.id }}"
-        unique_name: true
-        private_networking: true
-        monitoring: true
-        vpc_uuid: "{{ do_vpc.data.vpc.id }}"
-        tags:
-          - k8s
-          - controller
-          - auto_destroy
-      register: controller_droplets
-      loop: "{{ range(0, 3) | list }}"
+    - name: DigitalOcean
+      ansible.builtin.include_tasks: tasks/digitalocean.yml
       when: deploy | bool
-      # until: '"vpc" in (controller_droplets.data.keys() | list)'
 
-    - name: Create Droplet firewall
-      community.digitalocean.digital_ocean_firewall:
-        # droplet_ids: controller_droplets.
-        state: present
-        name: '{{ _vpc_name }}-firewall'
-        inbound_rules:
-          - protocol: tcp
-            ports: 22
-            sources:
-              addresses: ["0.0.0.0/0"]
-          - protocol: tcp
-            ports: 6443
-            sources:
-              addresses: ["0.0.0.0/0"]
-          - protocol: icmp
-            ports: "1-65535"
-            sources:
-              addresses: ["0.0.0.0/0"]
-        outbound_rules:
-          - protocol: "tcp"
-            ports: "1-65535"
-            destinations:
-              addresses: ["0.0.0.0/0", "::/0"]
-          - protocol: "udp"
-            ports: "1-65535"
-            destinations:
-              addresses: ["0.0.0.0/0", "::/0"]
-          - protocol: "icmp"
-            ports: "1-65535"
-            destinations:
-              addresses: ["0.0.0.0/0", "::/0"]
-        tags: k8s
-      register: do_firewall
-
-- name: PKI TLS
-  tags: crypto
-  hosts: localhost
-  connection: local
-  tasks:
     - name: PKI
       ansible.builtin.include_tasks: tasks/pki.yml
 
-- name: Workers
-  tags:
-    - workers
-  hosts: localhost
-  connection: local
-  tasks:
     - name: Workers
       ansible.builtin.include_tasks: tasks/workers.yml
