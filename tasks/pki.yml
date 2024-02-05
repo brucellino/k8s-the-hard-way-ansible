@@ -278,3 +278,49 @@
     content: "{{ signed_k8s_api_server_cert.certificate }}"
     mode: "0644"
   when: signed_k8s_api_server_cert is changed
+
+# Service account certs
+- name: SA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ lookup('env', 'PWD') }}/certs/sa-key.pem"
+    type: RSA
+
+- name: SA CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ lookup('env', 'PWD') }}/certs/sa-key.pem"
+    common_name: service-accounts
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: Kubernetes
+  register: sa_csr
+
+- name: Check whether CA certificate exists
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'PWD') }}/certs/sa-cert.pem"
+  register: sa_cert_exists
+
+- name: Read SA cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ lookup('env', 'PWD') }}/certs/sa-cert.pem"
+  when: sa_cert_exists.stat.exists
+  register: sa_cert
+
+- name: Sign SA cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (sa_cert.content | b64decode) if sa_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ sa_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_sa_cert
+
+- name: Write SA cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ lookup('env', 'PWD') }}/certs/sa-cert.pem"
+    content: "{{ signed_sa_cert.certificate }}"
+    mode: "0644"
+  when: signed_sa_cert is changed
