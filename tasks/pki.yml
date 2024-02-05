@@ -174,3 +174,107 @@
     content: "{{ signed_kube_proxy_client_cert.certificate }}"
     mode: "0644"
   when: signed_kube_proxy_client_cert is changed
+
+# scheduler client cert
+- name: Scheduler Client private key
+  community.crypto.openssl_privatekey:
+    path: "{{ lookup('env', 'PWD') }}/certs/scheduler-client-key.pem"
+    type: RSA
+
+- name: Scheduler Client CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ lookup('env', 'PWD') }}/certs/scheduler-client-key.pem"
+    common_name: system:kube-scheduler
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: system:kube-scheduler
+  register: scheduler_client_csr
+
+- name: Check whether Scheduler Client certificate exists
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'PWD') }}/certs/scheduler-client-cert.pem"
+  register: scheduler_client_cert_exists
+
+- name: Read Scheduler Client cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ lookup('env', 'PWD') }}/certs/scheduler-client-cert.pem"
+  when: scheduler_client_cert_exists.stat.exists
+  register: scheduler_client_cert
+
+- name: Sign Scheduler Client cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (scheduler_client_cert.content | b64decode) if scheduler_client_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ scheduler_client_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_scheduler_client_cert
+
+- name: Write Scheduler Client cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ lookup('env', 'PWD') }}/certs/scheduler-client-cert.pem"
+    content: "{{ signed_scheduler_client_cert.certificate }}"
+    mode: "0644"
+  when: signed_scheduler_client_cert is changed
+
+# K8s API server cert -- requires IP
+- name: K8s API server private key
+  community.crypto.openssl_privatekey:
+    path: "{{ lookup('env', 'PWD') }}/certs/k8s-api-server-key.pem"
+    type: RSA
+
+- name: K8s API Server CSR
+  community.crypto.openssl_csr_pipe:
+    use_common_name_for_san: false
+    subject_alt_name:
+      - IP:10.32.0.1
+      - IP:10.240.0.10
+      - IP:10.240.0.11
+      - IP:10.240.0.12
+      - DNS:kubernetes
+      - DNS:kubernetes.default
+      - DNS:kubernetes.default.svc
+      - DNS:kubernetes.default.svc.cluster
+      - DNS:kubernetes.svc.cluster.local
+      - IP:127.0.0.1
+    privatekey_path: "{{ lookup('env', 'PWD') }}/certs/k8s-api-server-key.pem"
+    common_name: kubernetes
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: Kubernetes
+  register: k8s_api_server_csr
+
+- name: Check whether K8s API server certificate exists
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'PWD') }}/certs/k8s-api-server-cert.pem"
+  register: k8s_api_server_cert_exists
+
+- name: Read K8s API server cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ lookup('env', 'PWD') }}/certs/k8s-api-server-cert.pem"
+  when: k8s_api_server_cert_exists.stat.exists
+  register: k8s_api_server_cert
+
+- name: Sign K8s API Server cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (k8s_api_server_cert.content | b64decode) if k8s_api_server_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ k8s_api_server_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_k8s_api_server_cert
+
+- name: Write K8s API Server cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ lookup('env', 'PWD') }}/certs/k8s-api-server-cert.pem"
+    content: "{{ signed_k8s_api_server_cert.certificate }}"
+    mode: "0644"
+  when: signed_k8s_api_server_cert is changed
