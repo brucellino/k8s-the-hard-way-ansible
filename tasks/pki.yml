@@ -92,12 +92,12 @@
 - name: Controller Manager CSR
   community.crypto.openssl_csr_pipe:
     privatekey_path: "{{ lookup('env', 'PWD') }}/certs/controller-manager-key.pem"
-    common_name: admin
+    common_name: system:controller-manager
     country_name: IT
     locality_name: Catania
     state_or_province_name: Sicily
     organizational_unit_name: Kubernetes The Hard Way
-    organization_name: system:masters
+    organization_name: system:kube-controller-manager"
   register: controller_manager_csr
 
 - name: Check whether Controller Manager certificate exists
@@ -128,3 +128,49 @@
     content: "{{ signed_controller_manager_cert.certificate }}"
     mode: "0644"
   when: signed_controller_manager_cert is changed
+
+# kube-proxy client cert
+- name: Kube Proxy Client private key
+  community.crypto.openssl_privatekey:
+    path: "{{ lookup('env', 'PWD') }}/certs/kube-proxy-client-key.pem"
+    type: RSA
+
+- name: Kube Proxy Client CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ lookup('env', 'PWD') }}/certs/kube-proxy-client-key.pem"
+    common_name: system:kube-proxy
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: system:node-proxier
+  register: kube_proxy_client_csr
+
+- name: Check whether Kube Proxy Client certificate exists
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'PWD') }}/certs/kube-proxy-client-cert.pem"
+  register: kube_proxy_client_cert_exists
+
+- name: Read Kube Proxy Client cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ lookup('env', 'PWD') }}/certs/kube-proxy-client-cert.pem"
+  when: kube_proxy_client_cert_exists.stat.exists
+  register: kube_proxy_client_cert
+
+- name: Sign Kube Proxy Client cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (kube_proxy_client_cert.content | b64decode) if kube_proxy_client_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ kube_proxy_client_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_kube_proxy_client_cert
+
+- name: Write Kube Proxy Client cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ lookup('env', 'PWD') }}/certs/kube-proxy-client-cert.pem"
+    content: "{{ signed_kube_proxy_client_cert.certificate }}"
+    mode: "0644"
+  when: signed_kube_proxy_client_cert is changed
