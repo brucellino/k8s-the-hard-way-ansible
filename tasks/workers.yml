@@ -24,7 +24,7 @@
   community.crypto.openssl_privatekey:
     path: "{{ lookup('env', 'PWD') }}/certs/kubelet-{{ item }}-key.pem"
     type: RSA
-  loop: "{{ range(0,3) | list }}"
+  loop: "{{ range(0, 3) | list }}"
 
 # This requires knowing the IP and hostname of the machine
 - name: Create kubelet client CSR
@@ -37,19 +37,13 @@
     organizational_unit_name: Kubernetes The Hard Way
     organization_name: system:masters
   register: kubelet_csr
-  loop: "{{ range(0,3) | list }}"
-
-- debug:
-    var: kubelet_csr
+  loop: "{{ range(0, 3) | list }}"
 
 - name: Check whether kubelet certificate exists
   ansible.builtin.stat:
     path: "{{ lookup('env', 'PWD') }}/certs/kubelet-{{ item }}-cert.pem"
   register: kube_cert_exists
-  loop: "{{ range(0,3) | list }}"
-
-- debug:
-    msg: "{{kube_cert_exists | community.general.json_query('results[?stat.exists]')}}"
+  loop: "{{ range(0, 3) | list }}"
 
 - name: Read kubelet cert if it exists
   ansible.builtin.slurp:
@@ -57,10 +51,6 @@
   when: kube_cert_exists | community.general.json_query('results[?stat.exists]')
   register: kube_cert
   loop: "{{ kube_cert_exists.results | list }}"
-
-- debug:
-    var: kube_cert
-  when: not kube_cert.skipped
 
 - name: Sign kubelet cert with CA
   community.crypto.x509_certificate_pipe:
@@ -72,10 +62,7 @@
     ownca_not_after: "+6d"
     ownca_not_before: "-1d"
   register: signed_kubelet_cert
-  loop: "{{ range(0,3) | list }}"
-
-- debug:
-    var: signed_kubelet_cert
+  loop: "{{ range(0, 3) | list }}"
 
 - name: Write kubelet cert # noqa no-handler
   ansible.builtin.copy:
