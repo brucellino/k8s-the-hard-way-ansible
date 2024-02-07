@@ -168,3 +168,6 @@ id_rsa*
 # ignore generated files
 ca/
 certs/
+
+# Ignore generated certs
+*.pem
