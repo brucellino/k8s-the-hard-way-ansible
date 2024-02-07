@@ -1,0 +1,311 @@
+---
+# controller Certs
+
+# Create Cert dir
+- name: Ensure certs dir
+  ansible.builtin.file:
+    path: "{{ pki_dir }}/{{ item }}"
+    state: directory
+    mode: "0744"
+    owner: root
+    group: root
+  loop:
+    - certs
+    - ca
+
+- name: Admin client private key
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/certs/admin-key.pem"
+    type: RSA
+
+- name: Create admin client CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ pki_dir }}/certs/admin-key.pem"
+    common_name: admin
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: system:masters
+  register: admin_csr
+
+- name: Check whether admin certificate exists
+  ansible.builtin.stat:
+    path: "{{ pki_dir }}/certs/admin-cert.pem"
+  register: admin_cert_exists
+
+- name: Read admin cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/admin-cert.pem"
+  when: admin_cert_exists.stat.exists
+  register: admin_cert
+
+
+# This has to be done from the Ansible controller since we need to access
+# The CA key
+- name: Sign admin cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (admin_cert.content | b64decode) if admin_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ admin_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_admin_cert
+  delegate_to: localhost
+
+- name: Write Admin cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ pki_dir }}/certs/admin-cert.pem"
+    content: "{{ signed_admin_cert.certificate }}"
+    mode: "0644"
+  when: signed_admin_cert is changed
+
+# Controller Manager certs
+- name: Controller Manager Client private key
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/certs/controller-manager-key.pem"
+    type: RSA
+
+- name: Controller Manager CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ pki_dir }}/certs/controller-manager-key.pem"
+    common_name: system:controller-manager
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: system:kube-controller-manager
+  register: controller_manager_csr
+
+- name: Check whether Controller Manager certificate exists
+  ansible.builtin.stat:
+    path: "{{ pki_dir }}/certs/controller-manager-cert.pem"
+  register: controller_manager_cert_exists
+
+- name: Read Controller Manager cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/controller-manager-cert.pem"
+  when: controller_manager_cert_exists.stat.exists
+  register: controller_manager_cert
+
+- name: Sign Controller Manager cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (controller_manager_cert.content | b64decode) if controller_manager_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ controller_manager_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_controller_manager_cert
+  delegate_to: localhost
+
+- name: Write Controller Manager cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ pki_dir }}/certs/controller-manager-cert.pem"
+    content: "{{ signed_controller_manager_cert.certificate }}"
+    mode: "0644"
+  when: signed_controller_manager_cert is changed
+
+# kube-proxy client cert
+- name: Kube Proxy Client private key
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/certs/kube-proxy-client-key.pem"
+    type: RSA
+
+- name: Kube Proxy Client CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ pki_dir }}/certs/kube-proxy-client-key.pem"
+    common_name: system:kube-proxy
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: system:node-proxier
+  register: kube_proxy_client_csr
+
+- name: Check whether Kube Proxy Client certificate exists
+  ansible.builtin.stat:
+    path: "{{ pki_dir }}/certs/kube-proxy-client-cert.pem"
+  register: kube_proxy_client_cert_exists
+
+- name: Read Kube Proxy Client cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/kube-proxy-client-cert.pem"
+  when: kube_proxy_client_cert_exists.stat.exists
+  register: kube_proxy_client_cert
+
+- name: Sign Kube Proxy Client cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (kube_proxy_client_cert.content | b64decode) if kube_proxy_client_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ kube_proxy_client_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_kube_proxy_client_cert
+  delegate_to: localhost
+
+- name: Write Kube Proxy Client cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ pki_dir }}/certs/kube-proxy-client-cert.pem"
+    content: "{{ signed_kube_proxy_client_cert.certificate }}"
+    mode: "0644"
+  when: signed_kube_proxy_client_cert is changed
+
+# scheduler client cert
+- name: Scheduler Client private key
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/certs/scheduler-client-key.pem"
+    type: RSA
+
+- name: Scheduler Client CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ pki_dir }}/certs/scheduler-client-key.pem"
+    common_name: system:kube-scheduler
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: system:kube-scheduler
+  register: scheduler_client_csr
+
+- name: Check whether Scheduler Client certificate exists
+  ansible.builtin.stat:
+    path: "{{ pki_dir }}/certs/scheduler-client-cert.pem"
+  register: scheduler_client_cert_exists
+
+- name: Read Scheduler Client cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/scheduler-client-cert.pem"
+  when: scheduler_client_cert_exists.stat.exists
+  register: scheduler_client_cert
+
+- name: Sign Scheduler Client cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (scheduler_client_cert.content | b64decode) if scheduler_client_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ scheduler_client_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_scheduler_client_cert
+  delegate_to: localhost
+
+- name: Write Scheduler Client cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ pki_dir }}/certs/scheduler-client-cert.pem"
+    content: "{{ signed_scheduler_client_cert.certificate }}"
+    mode: "0644"
+  when: signed_scheduler_client_cert is changed
+
+# K8s API server cert -- requires IP
+- name: K8s API server private key
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/certs/k8s-api-server-key.pem"
+    type: RSA
+
+# We should read the actual IP of the controllers here
+- name: K8s API Server CSR
+  community.crypto.openssl_csr_pipe:
+    use_common_name_for_san: false
+    subject_alt_name:
+      - IP:10.32.0.1
+      - IP:10.240.0.10
+      - IP:10.240.0.11
+      - IP:10.240.0.12
+      - DNS:kubernetes
+      - DNS:kubernetes.default
+      - DNS:kubernetes.default.svc
+      - DNS:kubernetes.default.svc.cluster
+      - DNS:kubernetes.svc.cluster.local
+      - IP:127.0.0.1
+    privatekey_path: "{{ pki_dir }}/certs/k8s-api-server-key.pem"
+    common_name: kubernetes
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: Kubernetes
+  register: k8s_api_server_csr
+
+- name: Check whether K8s API server certificate exists
+  ansible.builtin.stat:
+    path: "{{ pki_dir }}/certs/k8s-api-server-cert.pem"
+  register: k8s_api_server_cert_exists
+
+- name: Read K8s API server cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/k8s-api-server-cert.pem"
+  when: k8s_api_server_cert_exists.stat.exists
+  register: k8s_api_server_cert
+
+- name: Sign K8s API Server cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (k8s_api_server_cert.content | b64decode) if k8s_api_server_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ k8s_api_server_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_k8s_api_server_cert
+  delegate_to: localhost
+
+- name: Write K8s API Server cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ pki_dir }}/certs/k8s-api-server-cert.pem"
+    content: "{{ signed_k8s_api_server_cert.certificate }}"
+    mode: "0644"
+  when: signed_k8s_api_server_cert is changed
+
+# Service account certs
+- name: SA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ pki_dir }}/certs/sa-key.pem"
+    type: RSA
+
+- name: SA CSR
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ pki_dir }}/certs/sa-key.pem"
+    common_name: service-accounts
+    country_name: IT
+    locality_name: Catania
+    state_or_province_name: Sicily
+    organizational_unit_name: Kubernetes The Hard Way
+    organization_name: Kubernetes
+  register: sa_csr
+
+- name: Check whether SA certificate exists
+  ansible.builtin.stat:
+    path: "{{ pki_dir }}/certs/sa-cert.pem"
+  register: sa_cert_exists
+
+- name: Read SA cert if it exists
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/sa-cert.pem"
+  when: sa_cert_exists.stat.exists
+  register: sa_cert
+
+- name: Sign SA cert with CA
+  community.crypto.x509_certificate_pipe:
+    content: "{{ (sa_cert.content | b64decode) if sa_cert_exists.stat.exists else omit }}"
+    csr_content: "{{ sa_csr.csr }}"
+    provider: ownca
+    ownca_path: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    ownca_privatekey_path: "{{ lookup('env', 'PWD') }}/ca/ca-key.pem"
+    ownca_not_after: "+6d"
+    ownca_not_before: "-1d"
+  register: signed_sa_cert
+  delegate_to: localhost
+
+- name: Write SA cert # noqa no-handler
+  ansible.builtin.copy:
+    dest: "{{ pki_dir }}/certs/sa-cert.pem"
+    content: "{{ signed_sa_cert.certificate }}"
+    mode: "0644"
+  when: signed_sa_cert is changed

@@ -7,3 +7,13 @@ _vpc_name: kubernetes-the-hard-way
 _cidr: 10.240.0.0/24
 deploy: false
 destroy: true
+pki_dir: /opt/pki
+
+controller_tags:
+  - k8s
+  - controller
+  - auto_delete
+worker_tags:
+  - k8s
+  - worker
+  - auto_delete

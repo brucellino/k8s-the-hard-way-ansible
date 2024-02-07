@@ -1,5 +1,12 @@
 ---
-- name: Create Worker Machines
+# Kubernetes workers
+## We cannot guarantee that the do_vpc variable is present
+## so we should do a quick lookup
+- name: Lookup VPCs
+  community.digitalocean.digital_ocean_vpc_info:
+  register: vpcs
+
+- name: Create Worker Machines # noqa jinja[invalid]
   community.digitalocean.digital_ocean_droplet:
     state: present
     name: "kube-worker-{{ item }}"
@@ -10,14 +17,13 @@
     unique_name: true
     private_networking: true
     monitoring: true
-    vpc_uuid: "{{ do_vpc.data.vpc.id }}"
-    tags:
-      - k8s
-      - worker
-      - auto_destroy
+    vpc_uuid: "{{ vpcs | community.general.json_query(query) }}"
+    tags: "{{ worker_tags }}"
   register: worker_droplets
   loop: "{{ range(0, 3) | list }}"
   when: deploy | bool
+  vars:
+    query: "data[?name=='{{ _vpc_name }}'].id"
 
 # Kubelet certs
 - name: Kubelet client private key
@@ -36,8 +42,19 @@
     state_or_province_name: Sicily
     organizational_unit_name: Kubernetes The Hard Way
     organization_name: system:masters
+    # Key usage below is from the CFSSL "kubernetes" profile.
+    # See https://github.com/kelseyhightower/kubernetes-the-hard-way/issues/424
+    key_usage:
+      - signing
+      - keyEncipherment
+      - serverAuth
+      - clientAuth
+    subject_alt_name:
+      - "{{ item.name }}"
+      - "{{ item.networks.v4[0].ip_address }}"
+      - "{{ item.networks.v4[1].ip_address }}"
   register: kubelet_csr
-  loop: "{{ range(0, 3) | list }}"
+  loop: "{{ worker_droplets.data }}"
 
 - name: Check whether kubelet certificate exists
   ansible.builtin.stat:

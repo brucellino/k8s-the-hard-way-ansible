@@ -18,14 +18,40 @@
       ansible.builtin.assert:
         that: kubectl_exists.rc == 0
 
+    # Create VPC and firewalls
     - name: DigitalOcean
       ansible.builtin.include_tasks: tasks/digitalocean.yml
 
+    # Create CA cert
     - name: PKI
       ansible.builtin.include_tasks: tasks/pki.yml
 
-    - name: Controllers
+    # Deploy controllers
+    - name: Create Controllers
       ansible.builtin.include_tasks: tasks/controllers.yml
 
+    # Deploy workers
+    - name: Create Workers
+      ansible.builtin.include_tasks: tasks/workers.yml
+
+- name: Configure controller Certs
+  hosts: controller
+  tags:
+    - controller
+    - pki
+  tasks:
+    - name: Get vars
+      ansible.builtin.include_vars: defaults/main.yml
+    - name: Create and Distribute controller certs
+      ansible.builtin.include_tasks: tasks/controller-certs.yml
+
+- name: Configure worker certs
+  hosts: worker
+  tags:
+    - worker
+    - pki
+  tasks:
+    - name: Get vars
+      ansible.builtin.include_vars: defaults/main.yml
     - name: Workers
       ansible.builtin.include_tasks: tasks/workers.yml
