@@ -1,3 +1,4 @@
+---
 - name: Create machines
   hosts: localhost
   connection: local
@@ -36,6 +37,10 @@
 
 - name: Configure controller Certs
   hosts: controller
+  connection: paramiko
+  remote_user: root
+  vars:
+    ansible_ssh_private_key_file: id_rsa_k8s_do # pragma: allowlist secret
   tags:
     - controller
     - pki
@@ -47,6 +52,10 @@
 
 - name: Configure worker certs
   hosts: worker
+  connection: paramiko
+  remote_user: root
+  vars:
+    ansible_ssh_private_key_file: id_rsa_k8s_do # pragma: allowlist secret
   tags:
     - worker
     - pki
@@ -54,4 +63,4 @@
     - name: Get vars
       ansible.builtin.include_vars: defaults/main.yml
     - name: Workers
-      ansible.builtin.include_tasks: tasks/workers.yml
+      ansible.builtin.include_tasks: tasks/worker-certs.yml
