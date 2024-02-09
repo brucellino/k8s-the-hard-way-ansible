@@ -1,15 +1,15 @@
 ---
-# Kubernetes workers
-## We cannot guarantee that the do_vpc variable is present
-## so we should do a quick lookup
+## Admin certs
+# We cannot guarantee that the data in do_vpc is propagated to this series of tasks
+# So we have to refresh the data for use in this stanza
 - name: Lookup VPCs
   community.digitalocean.digital_ocean_vpc_info:
   register: vpcs
 
-- name: Create Worker Machines # noqa jinja[invalid]
+- name: Create Controller Machines
   community.digitalocean.digital_ocean_droplet:
     state: present
-    name: "kube-worker-{{ item }}"
+    name: "kube-{{ item }}"
     size: "{{ _size_id }}"
     region_id: "{{ _region_id }}"
     image: "{{ _image_id }}"
@@ -17,10 +17,11 @@
     unique_name: true
     private_networking: true
     monitoring: true
-    vpc_uuid: "{{ vpcs | community.general.json_query(query) | first }}"
-    tags: "{{ worker_tags }}"
-  register: worker_droplets
+    vpc_uuid: "{{ vpcs | community.general.json_query(query) | first }}" # noqa jinja[invalid]
+    tags: "{{ controller_tags | list }}"
+  register: controller_droplets
   loop: "{{ range(0, 3) | list }}"
   when: deploy | bool
   vars:
     query: "data[?name=='{{ _vpc_name }}'].id"
+  # until: '"vpc" in (controller_droplets.data.keys() | list)'
