@@ -26,43 +26,91 @@
     # Create CA cert
     - name: PKI
       ansible.builtin.include_tasks: tasks/pki.yml
+      tags:
+        - pki
 
     # Deploy controllers
     - name: Create Controllers
       ansible.builtin.include_tasks: tasks/controllers.yml
-
+      tags:
+        - controller
+    - name: Update inventory for controllers
+      ansible.builtin.meta: refresh_inventory
+      tags:
+        - controller
     # Deploy workers
     - name: Create Workers
       ansible.builtin.include_tasks: tasks/workers.yml
+      tags:
+        - worker
+    - name: Update inventory for workers
+      ansible.builtin.meta: refresh_inventory
+      tags:
+        - worker
+    - name: Check Encryption key
+      ansible.builtin.stat:
+        path: "{{ encryption_key_file }}"
+      register: encryption_file_stat
 
-- name: Configure controller Certs
+    - name: Generate Encryption key
+      ansible.builtin.copy:
+        dest: "{{ encryption_key_file }}"
+        content: "{{ lookup('community.general.random_string', base64=True, length=32) }}"
+        mode: "0644"
+      when: (not encryption_file_stat.stat.exists) or (encryption_file_stat.stat.size == 0)
+
+- name: Configure controllers
   hosts: controller
-  connection: paramiko
+  connection: ssh
   remote_user: root
-  gather_facts: true
+  gather_facts: false
   vars:
     ansible_ssh_private_key_file: id_rsa_k8s_do # pragma: allowlist secret
+    ansible_host_key_checking: false
+    ansible_ssh_host_key_checking: false
   tags:
     - controller
     - pki
   tasks:
     - name: Get vars
       ansible.builtin.include_vars: defaults/main.yml
+    - name: Wait for machines to be ready
+      ansible.builtin.wait_for_connection:
+        connect_timeout: 5
+        delay: 0
+        sleep: 1
+        timeout: 600
+    - name: Gather facts
+      ansible.builtin.setup:
     - name: Create and Distribute controller certs
       ansible.builtin.include_tasks: tasks/controller-certs.yml
+    - name: Template controller configs
+      ansible.builtin.include_tasks: tasks/controller-configs.yml
+    - name: Configure etcd
+      ansible.builtin.include_tasks: tasks/etcd.yml
 
 - name: Configure worker certs
   hosts: worker
-  connection: paramiko
+  connection: ssh
   remote_user: root
-  gather_facts: true
+  gather_facts: false
   vars:
     ansible_ssh_private_key_file: id_rsa_k8s_do # pragma: allowlist secret
+    ansible_host_key_checking: false
+    ansible_ssh_host_key_checking: false
   tags:
     - worker
     - pki
   tasks:
     - name: Get vars
       ansible.builtin.include_vars: defaults/main.yml
+    - name: Wait for machines to be ready
+      ansible.builtin.wait_for_connection:
+        connect_timeout: 5
+        delay: 0
+        sleep: 1
+        timeout: 600
+    - name: Gather facts
+      ansible.builtin.setup:
     - name: Workers
       ansible.builtin.include_tasks: tasks/worker-certs.yml

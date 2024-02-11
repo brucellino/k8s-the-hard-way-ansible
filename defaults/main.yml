@@ -9,7 +9,7 @@ deploy: false
 destroy: true
 pki_dir: /opt/pki
 kubeconfig_dir: /opt/kube
-
+encryption_key_file: encryption-key
 controller_tags:
   - k8s
   - controller
