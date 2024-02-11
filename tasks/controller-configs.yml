@@ -1,0 +1,62 @@
+---
+# Controller configs
+- name: Ensure config dir
+  ansible.builtin.file:
+    path: "{{ kubeconfig_dir }}"
+    state: directory
+    mode: "0744"
+    owner: root
+    group: root
+
+- name: Ensure yamlint is present
+  ansible.builtin.package:
+    name: yamllint
+    state: present
+
+- name: Get the CA cert
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/ca/ca-cert.pem"
+  register: ca_cert_pubkey
+
+
+- name: Template Controller Manager KubeConfig files
+  ansible.builtin.template:
+    src: opt/kube/kubeconfig.yml.j2
+    dest: "{{ kubeconfig_dir }}/kube-controller-manager.kubeconfig.yml"
+    backup: true
+    mode: "0644"
+    owner: root
+    group: root
+    validate: yamlint %s
+  vars:
+    ca_cert_b64: "{{ ca_cert_pubkey | b64encode }}"
+    ip: "127.0.0.1"
+    kube_user: "system:kube-controller-manager"
+
+- name: Template Scheduler KubeConfig files
+  ansible.builtin.template:
+    src: opt/kube/kubeconfig.yml.j2
+    dest: "{{ kubeconfig_dir }}/kube-scheduler.kubeconfig.yml"
+    backup: true
+    mode: "0644"
+    owner: root
+    group: root
+    validate: yamlint %s
+  vars:
+    ca_cert_b64: "{{ ca_cert_pubkey | b64encode }}"
+    ip: "127.0.0.1"
+    kube_user: "system:kube-controller-manager"
+
+- name: Template Admin KubeConfig files
+  ansible.builtin.template:
+    src: opt/kube/kubeconfig.yml.j2
+    dest: "{{ kubeconfig_dir }}/kube-controller-manager.kubeconfig"
+    backup: true
+    mode: "0644"
+    owner: root
+    group: root
+    validate: yamlint %s
+  vars:
+    ca_cert_b64: "{{ ca_cert_pubkey | b64encode }}"
+    ip: "127.0.0.1"
+    kube_user: "system:kube-scheduler"
