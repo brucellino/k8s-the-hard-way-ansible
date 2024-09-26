@@ -4,11 +4,12 @@ _size_id: s-1vcpu-1gb
 _region_id: ams3
 _image_id: ubuntu-22-04-x64
 _vpc_name: kubernetes-the-hard-way
-_cidr: 10.240.0.0/24
+_cidr: "10.240.0.0/24"
 deploy: false
 destroy: true
 pki_dir: /opt/pki
-
+kubeconfig_dir: /opt/kube
+encryption_key_file: encryption-key
 controller_tags:
   - k8s
   - controller
