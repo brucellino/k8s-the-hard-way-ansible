@@ -6,7 +6,7 @@
     path: "{{ lookup('env', 'PWD') }}/id_rsa_k8s_do"
   register: ssh_key
 
-- name: Add ssh key to digitalocean
+- name: Add ssh key to digitalocean # noqa args[module]
   community.digitalocean.digital_ocean_sshkey:
     name: "ansible key"
     ssh_pub_key: "{{ ssh_key.public_key }}"
