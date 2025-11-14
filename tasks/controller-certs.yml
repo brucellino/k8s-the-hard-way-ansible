@@ -1,7 +1,6 @@
 ---
 # controller Certs
-
-# Create Cert dir
+## Create Cert dir
 - name: Ensure certs dir
   ansible.builtin.file:
     path: "{{ pki_dir }}/{{ item }}"
@@ -12,6 +11,16 @@
   loop:
     - certs
     - ca
+
+- name: Distribute CA cert
+  ansible.builtin.copy:
+    dest: "{{ pki_dir }}/ca/ca-cert.pem"
+    src: "{{ lookup('env', 'PWD') }}/ca/ca-cert.pem"
+    backup: true
+    mode: "0444"
+    owner: root
+    group: root
+    validate: openssl x509 -in %s -nooout -text
 
 - name: Admin client private key
   community.crypto.openssl_privatekey:
