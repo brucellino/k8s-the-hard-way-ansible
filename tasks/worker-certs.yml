@@ -13,33 +13,9 @@
 # Kubelet certs
 - name: Kubelet client private key
   community.crypto.openssl_privatekey:
-    path: "{{ pki_dir }}/certs/kubelet-{{ item }}-key.pem"
+    path: "{{ pki_dir }}/certs/kubelet-{{ ansible_hostname }}-key.pem"
     type: RSA
-  loop: "{{ range(0, 3) | list }}"
 
-# This requires knowing the IP and hostname of the machine
-# - name: Create kubelet client CSR
-#   community.crypto.openssl_csr_pipe:
-#     privatekey_path: "{{ pki_dir }}/certs/kubelet-{{ item }}-key.pem"
-#     common_name: "system:node:node-{{ item }}"
-#     country_name: IT
-#     locality_name: Catania
-#     state_or_province_name: Sicily
-#     organizational_unit_name: Kubernetes The Hard Way
-#     organization_name: system:masters
-#     # Key usage below is from the CFSSL "kubernetes" profile.
-#     # See https://github.com/kelseyhightower/kubernetes-the-hard-way/issues/424
-#     key_usage:
-#       - signing
-#       - keyEncipherment
-#       - serverAuth
-#       - clientAuth
-#     subject_alt_name:
-#       - "{{ item.name }}"
-#       - "{{ item.networks.v4[0].ip_address }}"
-#       - "{{ item.networks.v4[1].ip_address }}"
-#   register: kubelet_csr
-#   loop: "{{ worker_droplets.data }}"
 
 # This requires knowing the IP and hostname of the machine
 - name: Create kubelet client CSR
@@ -60,7 +36,6 @@
       - clientAuth
     subject_alt_name:
       "{{ ansible_hostname | combine(all_ipv4_addresses) | list }}"
-
       # - "{{ item.networks.v4[0].ip_address }}"
       # - "{{ item.networks.v4[1].ip_address }}"
   register: kubelet_csr
@@ -94,3 +69,20 @@
     content: "{{ item.certificate }}"
     mode: "0644"
   when: signed_kubelet_cert is changed
+
+- name: Ensure kubeconfig dir
+  ansible.builtin.file:
+    path: /opt/kube
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
+
+- name: Template instance kubelet config
+  ansible.builtin.template:
+    src: opt/kube/instance.kubeconfig.j2
+    dest: "/opt/kube/{{ ansible_hostname }}.kubeconfig"
+    mode: "0644"
+    owner: root
+    group: root
+    # validate:

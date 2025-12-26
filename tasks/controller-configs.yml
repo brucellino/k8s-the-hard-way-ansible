@@ -1,0 +1,119 @@
+---
+# Controller configs
+- name: Ensure config dir
+  ansible.builtin.file:
+    path: "{{ kubeconfig_dir }}"
+    state: directory
+    mode: "0744"
+    owner: root
+    group: root
+
+- name: Ensure pkgs is present
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - yamllint
+    - unzip
+
+- name: Read CA cert
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/ca/ca-cert.pem"
+  register: ca_pubkey
+
+- name: Read controller manager cert
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/controller-manager-cert.pem"
+  register: cm_pub_key
+
+- name: Read controller manager key
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/controller-manager-key.pem"
+  register: cm_priv_key
+
+- name: Template Controller Manager KubeConfig files
+  ansible.builtin.template:
+    src: opt/kube/kubeconfig.yml.j2
+    dest: "{{ kubeconfig_dir }}/kube-controller-manager.kubeconfig.yml"
+    backup: true
+    mode: "0644"
+    owner: root
+    group: root
+    # validate: yamllint -d \"{extends: relaxed, rules: {line-length: {max: 120}}}\" %s
+  vars:
+    ca_cert_b64: "{{ ca_pubkey | b64encode }}"
+    ip: "127.0.0.1"
+    kube_user: "system:kube-controller-manager"
+    cert_b64: "{{ cm_pub_key.content | b64encode }}"
+    key_b64: "{{ cm_priv_key.content | b64encode }}"
+
+- name: Read scheduler client cert
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/scheduler-client-cert.pem"
+  register: sc_pub_key
+
+- name: Read scheduler manager key
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/scheduler-client-key.pem"
+  register: sc_priv_key
+
+- name: Template Scheduler KubeConfig files
+  ansible.builtin.template:
+    src: opt/kube/kubeconfig.yml.j2
+    dest: "{{ kubeconfig_dir }}/kube-scheduler.kubeconfig.yml"
+    backup: true
+    mode: "0644"
+    owner: root
+    group: root
+    # validate: yamllint %s
+  vars:
+    ca_cert_b64: "{{ ca_pubkey | b64encode }}"
+    ip: "127.0.0.1"
+    kube_user: "system:kube-scheduler"
+    cert_b64: "{{ sc_pub_key.content | b64encode }}"
+    key_b64: "{{ sc_priv_key.content | b64encode }}"
+
+- name: Read admin cert
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/admin-cert.pem"
+  register: admin_pub_key
+
+- name: Read admin manager key
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/admin-key.pem"
+  register: admin_priv_key
+
+- name: Template Admin KubeConfig files
+  ansible.builtin.template:
+    src: opt/kube/kubeconfig.yml.j2
+    dest: "{{ kubeconfig_dir }}/kube-admin.kubeconfig.yml"
+    backup: true
+    mode: "0644"
+    owner: root
+    group: root
+    # validate: yamllint %s
+  vars:
+    ca_cert_b64: "{{ ca_pubkey | b64encode }}"
+    ip: "127.0.0.1"
+    kube_user: "admin"
+    cert_b64: "{{ admin_pub_key.content | b64encode }}"
+    key_b64: "{{ admin_priv_key.content | b64encode }}"
+
+- name: Get encryption key
+  ansible.builtin.slurp:
+    src: "{{ encryption_key_file }}"
+  register: encryption_key
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Template encryption config
+  ansible.builtin.template:
+    src: opt/kube/encryption-config.yml.j2
+    dest: /opt/kube/encryption-config.yml
+    backup: true
+    mode: "0444"
+    owner: root
+    group: root
+  vars:
+    enc_key: encryption_key.content

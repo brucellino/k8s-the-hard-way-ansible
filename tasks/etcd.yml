@@ -1,0 +1,16 @@
+---
+- name: Provision etcd binary
+  ansible.builtin.unarchive:
+    remote_src: true
+    src: https://github.com/etcd-io/etcd/releases/download/v3.4.15/etcd-v3.4.15-linux-amd64.tar.gz
+    dest: /usr/local/bin/
+    creates: /usr/local/bin/etcd
+    extra_opts:
+      - --strip-components=1
+    include:
+      - etcd
+      - etcdctl
+    keep_newer: true
+    mode: "0777"
+    owner: root
+    group: root
