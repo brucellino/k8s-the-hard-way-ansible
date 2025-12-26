@@ -58,7 +58,8 @@
       - keyEncipherment
       - serverAuth
       - clientAuth
-    subject_alt_name: "{{ ansible_hostname | combine(all_ipv4_addresses)  | list }}"
+    subject_alt_name:
+      "{{ ansible_hostname | combine(all_ipv4_addresses) | list }}"
 
       # - "{{ item.networks.v4[0].ip_address }}"
       # - "{{ item.networks.v4[1].ip_address }}"

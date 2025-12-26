@@ -1,0 +1,45 @@
+---
+# Controller configs
+- name: Ensure config dir
+  ansible.builtin.file:
+    path: "{{ kubeconfig_dir }}"
+    state: directory
+    mode: "0744"
+    owner: root
+    group: root
+
+- name: Ensure yamllint is present
+  ansible.builtin.package:
+    name: yamllint
+    state: present
+
+- name: Read CA cert
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/ca/ca-cert.pem"
+  register: ca_pubkey
+
+- name: Read kubelet cert
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/kubelet-cert-{{ ansible_hostname }}.pem"
+  register: kubelet_pub_key
+
+- name: Read kubelet key
+  ansible.builtin.slurp:
+    src: "{{ pki_dir }}/certs/kubelet-key-{{ ansible_hostname }}.pem"
+  register: kubelet_priv_key
+
+- name: Template Kubelet Config files
+  ansible.builtin.template:
+    src: opt/kube/instance.kubeconfig.yml.j2
+    dest: "{{ kubeconfig_dir }}/kubelet-{{ ansible_hostname }}.kubeconfig.yml"
+    backup: true
+    mode: "0644"
+    owner: root
+    group: root
+    # validate: yamllint -d \"{extends: relaxed, rules: {line-length: {max: 120}}}\" %s
+  vars:
+    ca_cert_b64: "{{ ca_pubkey | b64encode }}"
+    ip: "{{ all_ipv4_addresses | first }}"
+    kube_user: "system:node:{{ ansible_hostname }}"
+    cert_b64: "{{ kubelet_pub_key | b64encode }}"
+    key_b64: "{{ kubelet_priv_key | b64encode }}"
