@@ -5,28 +5,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Tailscale
-        uses: tailscale/github-action@v2
+        uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
-          version: 1.58.2
+          version: 1.62.1
 
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Run ansible-lint
-        uses: ansible/ansible-lint@v24.2.0
+        uses: ansible/ansible-lint@v25.12.1
   release:
     needs:
       - test
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
       - name: Release
         run: |
           npx semantic-release \

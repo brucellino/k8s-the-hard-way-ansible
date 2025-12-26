@@ -17,10 +17,10 @@
     unique_name: true
     private_networking: true
     monitoring: true
-    vpc_uuid: "{{ vpcs | community.general.json_query(query) | first }}"
+    vpc_uuid: "{{ vpcs | community.general.json_query(this_query) | first }}"
     tags: "{{ worker_tags }}"
   register: worker_droplets
   loop: "{{ range(0, 3) | list }}"
   when: deploy | bool
   vars:
-    query: "data[?name=='{{ _vpc_name }}'].id"
+    this_query: "data[?name=='{{ _vpc_name }}'].id"
