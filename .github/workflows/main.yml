@@ -15,7 +15,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v6
       - name: Run ansible-lint
-        uses: ansible/ansible-lint@v26.1.0
+        uses: ansible/ansible-lint@v26.1.1
   release:
     needs:
       - test
